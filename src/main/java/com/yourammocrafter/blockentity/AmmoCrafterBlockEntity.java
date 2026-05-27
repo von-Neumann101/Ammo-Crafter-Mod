@@ -1,5 +1,6 @@
 package com.yourammocrafter.blockentity;
 
+import com.mojang.logging.LogUtils;
 import com.yourammocrafter.crafting.AmmoCraftingRule;
 import com.yourammocrafter.crafting.AmmoCraftingRules;
 import com.yourammocrafter.crafting.CountedIngredient;
@@ -9,10 +10,12 @@ import com.yourammocrafter.tacz.AmmoTemplateData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -24,13 +27,16 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.util.Optional;
+import java.util.StringJoiner;
 
 public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider {
     public static final int INPUT_SLOT_COUNT = 9;
     public static final int OUTPUT_SLOT_COUNT = 9;
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int CRAFT_INTERVAL_TICKS = 10;
     private static final Component TITLE = Component.translatable("container.yourammocrafter.ammo_crafter");
     private static final String INPUT_ITEMS_TAG = "InputItems";
@@ -211,27 +217,77 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
     private boolean tryCraftOnce() {
         AmmoTemplateData template = this.ammoTemplate.orElse(null);
         if (template == null) {
+            LOGGER.info(
+                    "Ammo crafter craft attempt at {} failed=no_template loadedRuleCount={} loadedAmmoIds={}",
+                    this.worldPosition,
+                    AmmoCraftingRules.count(),
+                    AmmoCraftingRules.ammoIds()
+            );
             return false;
         }
 
-        AmmoCraftingRule rule = AmmoCraftingRules.find(template.ammoId()).orElse(null);
+        ResourceLocation ammoId = template.ammoId();
+        AmmoCraftingRule rule = AmmoCraftingRules.find(ammoId).orElse(null);
         if (rule == null) {
+            logCraftAttempt(ammoId, false, 0, true, false, false, "no_rule");
             return false;
         }
 
         ItemStack output = template.createStack(rule.outputCount());
-        if (output.isEmpty()) {
+        boolean outputEmpty = output.isEmpty();
+        boolean ingredientsSufficient = hasIngredients(rule);
+        boolean outputCanFit = !outputEmpty && canInsertAllOutput(output);
+
+        if (outputEmpty) {
+            logCraftAttempt(ammoId, true, rule.outputCount(), true, ingredientsSufficient, false, "output_empty");
             return false;
         }
 
-        if (!hasIngredients(rule) || !canInsertAllOutput(output)) {
+        if (!ingredientsSufficient) {
+            LOGGER.info(
+                    "Ammo crafter missing ingredients at {} missing={} inputSlots={}",
+                    this.worldPosition,
+                    describeMissingIngredients(rule),
+                    describeInputContents()
+            );
+            logCraftAttempt(ammoId, true, rule.outputCount(), false, false, outputCanFit, "missing_ingredients");
             return false;
         }
 
+        if (!outputCanFit) {
+            logCraftAttempt(ammoId, true, rule.outputCount(), false, true, false, "output_full");
+            return false;
+        }
+
+        logCraftAttempt(ammoId, true, rule.outputCount(), false, true, true, "success");
         consumeIngredients(rule);
         insertOutput(output);
         this.setChanged();
         return true;
+    }
+
+    private void logCraftAttempt(
+            ResourceLocation ammoId,
+            boolean foundRule,
+            int outputCount,
+            boolean outputEmpty,
+            boolean ingredientsSufficient,
+            boolean outputCanFit,
+            String result
+    ) {
+        LOGGER.info(
+                "Ammo crafter craft attempt at {} ammoId={} loadedRuleCount={} loadedAmmoIds={} foundRule={} outputCount={} outputEmpty={} ingredientsSufficient={} outputCanFit={} result={}",
+                this.worldPosition,
+                ammoId,
+                AmmoCraftingRules.count(),
+                AmmoCraftingRules.ammoIds(),
+                foundRule,
+                outputCount,
+                outputEmpty,
+                ingredientsSufficient,
+                outputCanFit,
+                result
+        );
     }
 
     private boolean hasIngredients(AmmoCraftingRule rule) {
@@ -251,6 +307,47 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
             }
         }
         return true;
+    }
+
+    private String describeMissingIngredients(AmmoCraftingRule rule) {
+        StringJoiner missing = new StringJoiner(", ", "[", "]");
+        for (CountedIngredient ingredient : rule.ingredients()) {
+            int found = countIngredient(ingredient);
+            if (found < ingredient.count()) {
+                missing.add(describeIngredient(ingredient) + " found=" + found + " required=" + ingredient.count());
+            }
+        }
+        return missing.toString();
+    }
+
+    private int countIngredient(CountedIngredient ingredient) {
+        int found = 0;
+        for (int slot = 0; slot < this.inputItems.getSlots(); slot++) {
+            ItemStack stack = this.inputItems.getStackInSlot(slot);
+            if (ingredient.ingredient().test(stack)) {
+                found += stack.getCount();
+            }
+        }
+        return found;
+    }
+
+    private static String describeIngredient(CountedIngredient ingredient) {
+        StringJoiner items = new StringJoiner("|");
+        for (ItemStack stack : ingredient.ingredient().getItems()) {
+            items.add(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        }
+        return items.toString();
+    }
+
+    private String describeInputContents() {
+        StringJoiner contents = new StringJoiner(", ", "[", "]");
+        for (int slot = 0; slot < this.inputItems.getSlots(); slot++) {
+            ItemStack stack = this.inputItems.getStackInSlot(slot);
+            if (!stack.isEmpty()) {
+                contents.add(slot + "=" + BuiltInRegistries.ITEM.getKey(stack.getItem()) + "x" + stack.getCount());
+            }
+        }
+        return contents.toString();
     }
 
     private void consumeIngredients(AmmoCraftingRule rule) {

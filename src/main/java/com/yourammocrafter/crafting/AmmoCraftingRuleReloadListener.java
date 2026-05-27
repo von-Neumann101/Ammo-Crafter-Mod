@@ -57,7 +57,7 @@ public class AmmoCraftingRuleReloadListener extends SimpleJsonResourceReloadList
         }
 
         AmmoCraftingRules.replaceAll(loadedRules);
-        LOGGER.info("Loaded {} ammo crafting rules", loadedRules.size());
+        LOGGER.info("Loaded {} ammo crafting rules: {}", loadedRules.size(), AmmoCraftingRules.ammoIds());
     }
 
     private static AmmoCraftingRule parseRule(JsonElement element) {

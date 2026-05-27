@@ -2,6 +2,7 @@ package com.yourammocrafter.crafting;
 
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -16,6 +17,17 @@ public final class AmmoCraftingRules {
             return Optional.empty();
         }
         return Optional.ofNullable(rules.get(ammoId));
+    }
+
+    public static int count() {
+        return rules.size();
+    }
+
+    public static List<String> ammoIds() {
+        return rules.keySet().stream()
+                .map(ResourceLocation::toString)
+                .sorted()
+                .toList();
     }
 
     public static void replaceAll(Map<ResourceLocation, AmmoCraftingRule> loadedRules) {

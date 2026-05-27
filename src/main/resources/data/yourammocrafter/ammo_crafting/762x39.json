@@ -1,0 +1,14 @@
+{
+  "ammo_id": "tacz:762x39",
+  "output_count": 35,
+  "ingredients": [
+    {
+      "tag": "forge:ingots/copper",
+      "count": 15
+    },
+    {
+      "tag": "forge:gunpowder",
+      "count": 3
+    }
+  ]
+}

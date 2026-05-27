@@ -1,0 +1,2 @@
+/give @a yourammocrafter:ammo_crafter
+/reload
