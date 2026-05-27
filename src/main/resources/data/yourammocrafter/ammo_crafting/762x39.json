@@ -3,11 +3,11 @@
   "output_count": 35,
   "ingredients": [
     {
-      "tag": "forge:ingots/copper",
+      "tag": "c:ingots/copper",
       "count": 15
     },
     {
-      "tag": "forge:gunpowder",
+      "tag": "c:gunpowders",
       "count": 3
     }
   ]
