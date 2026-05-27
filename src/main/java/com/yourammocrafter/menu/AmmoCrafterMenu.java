@@ -3,10 +3,12 @@ package com.yourammocrafter.menu;
 import com.yourammocrafter.blockentity.AmmoCrafterBlockEntity;
 import com.yourammocrafter.registry.ModBlocks;
 import com.yourammocrafter.registry.ModMenus;
+import com.yourammocrafter.tacz.AmmoTemplateData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -15,9 +17,12 @@ import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 
 import java.util.Objects;
+import java.util.Optional;
 
 public class AmmoCrafterMenu extends AbstractContainerMenu {
-    public static final int INPUT_SLOT_START = 0;
+    public static final int TEMPLATE_SLOT_INDEX = 0;
+    public static final int TEMPLATE_SLOT_COUNT = 1;
+    public static final int INPUT_SLOT_START = TEMPLATE_SLOT_INDEX + TEMPLATE_SLOT_COUNT;
     public static final int INPUT_SLOT_COUNT = AmmoCrafterBlockEntity.INPUT_SLOT_COUNT;
     public static final int OUTPUT_SLOT_START = INPUT_SLOT_START + INPUT_SLOT_COUNT;
     public static final int OUTPUT_SLOT_COUNT = AmmoCrafterBlockEntity.OUTPUT_SLOT_COUNT;
@@ -27,16 +32,24 @@ public class AmmoCrafterMenu extends AbstractContainerMenu {
     public static final int HOTBAR_SLOT_COUNT = 9;
     public static final int TOTAL_SLOT_COUNT = HOTBAR_SLOT_START + HOTBAR_SLOT_COUNT;
 
-    private static final int INPUT_SLOTS_X = 26;
+    private static final int TEMPLATE_SLOT_X = 88;
+    private static final int TEMPLATE_SLOT_Y = 36;
+    private static final int INPUT_SLOTS_X = 17;
     private static final int INPUT_SLOTS_Y = 18;
-    private static final int OUTPUT_SLOTS_X = 116;
+    private static final int OUTPUT_SLOTS_X = 123;
     private static final int OUTPUT_SLOTS_Y = 18;
-    private static final int PLAYER_INVENTORY_X = 8;
+    private static final int PLAYER_INVENTORY_X = 17;
     private static final int PLAYER_INVENTORY_Y = 102;
     private static final int HOTBAR_Y = 160;
 
     private final AmmoCrafterBlockEntity blockEntity;
     private final ContainerLevelAccess access;
+    private final ItemStackHandler templateDisplayItems = new ItemStackHandler(TEMPLATE_SLOT_COUNT) {
+        @Override
+        public int getSlotLimit(int slot) {
+            return 1;
+        }
+    };
 
     public AmmoCrafterMenu(int containerId, Inventory playerInventory, BlockPos pos) {
         this(containerId, playerInventory, getBlockEntity(playerInventory, pos));
@@ -57,6 +70,8 @@ public class AmmoCrafterMenu extends AbstractContainerMenu {
         this.blockEntity = blockEntity;
         this.access = access;
 
+        syncTemplateDisplayFromBlockEntity();
+        addTemplateSlot();
         addInputSlots(blockEntity.getInputItems());
         addOutputSlots(blockEntity.getOutputItems());
         addPlayerInventorySlots(playerInventory);
@@ -68,8 +83,18 @@ public class AmmoCrafterMenu extends AbstractContainerMenu {
     }
 
     @Override
+    public void clicked(int slotId, int button, ClickType clickType, Player player) {
+        if (slotId == TEMPLATE_SLOT_INDEX) {
+            handleTemplateSlotClick(button, clickType);
+            return;
+        }
+
+        super.clicked(slotId, button, clickType, player);
+    }
+
+    @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        if (index < 0 || index >= this.slots.size()) {
+        if (index < 0 || index >= this.slots.size() || index == TEMPLATE_SLOT_INDEX) {
             return ItemStack.EMPTY;
         }
 
@@ -110,6 +135,15 @@ public class AmmoCrafterMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(Player player) {
         return stillValid(this.access, player, ModBlocks.AMMO_CRAFTER.get());
+    }
+
+    private void addTemplateSlot() {
+        this.addSlot(new TemplateSlot(
+                this.templateDisplayItems,
+                0,
+                TEMPLATE_SLOT_X,
+                TEMPLATE_SLOT_Y
+        ));
     }
 
     private void addInputSlots(ItemStackHandler inputItems) {
@@ -165,12 +199,60 @@ public class AmmoCrafterMenu extends AbstractContainerMenu {
         }
     }
 
+    private void handleTemplateSlotClick(int button, ClickType clickType) {
+        ItemStack carried = this.getCarried();
+        if (carried.isEmpty()) {
+            if (button == 1 || clickType == ClickType.QUICK_MOVE) {
+                clearTemplate();
+            }
+            return;
+        }
+
+        Optional<AmmoTemplateData> template = AmmoTemplateData.fromStack(carried);
+        template.ifPresent(this::setTemplate);
+    }
+
+    private void syncTemplateDisplayFromBlockEntity() {
+        ItemStack displayStack = this.blockEntity.getAmmoTemplate()
+                .map(template -> template.createStack(1))
+                .orElse(ItemStack.EMPTY);
+        this.templateDisplayItems.setStackInSlot(0, displayStack);
+    }
+
+    private void setTemplate(AmmoTemplateData template) {
+        this.blockEntity.setAmmoTemplate(template);
+        this.templateDisplayItems.setStackInSlot(0, template.createStack(1));
+        this.broadcastChanges();
+    }
+
+    private void clearTemplate() {
+        this.blockEntity.clearAmmoTemplate();
+        this.templateDisplayItems.setStackInSlot(0, ItemStack.EMPTY);
+        this.broadcastChanges();
+    }
+
     private static AmmoCrafterBlockEntity getBlockEntity(Inventory playerInventory, BlockPos pos) {
         BlockEntity blockEntity = playerInventory.player.level().getBlockEntity(pos);
         if (blockEntity instanceof AmmoCrafterBlockEntity ammoCrafterBlockEntity) {
             return ammoCrafterBlockEntity;
         }
         throw new IllegalStateException("Expected Ammo Crafter BlockEntity at " + pos);
+    }
+
+    private static final class TemplateSlot extends SlotItemHandler {
+        private TemplateSlot(ItemStackHandler itemHandler, int index, int xPosition, int yPosition) {
+            super(itemHandler, index, xPosition, yPosition);
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            return false;
+        }
+
+        @Override
+        public boolean mayPickup(Player player) {
+            return false;
+        }
     }
 
     private static final class OutputSlot extends SlotItemHandler {

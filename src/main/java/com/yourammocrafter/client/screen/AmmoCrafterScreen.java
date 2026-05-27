@@ -15,7 +15,7 @@ public class AmmoCrafterScreen extends AbstractContainerScreen<AmmoCrafterMenu> 
 
     public AmmoCrafterScreen(AmmoCrafterMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 176;
+        this.imageWidth = 194;
         this.imageHeight = 204;
         this.inventoryLabelY = 90;
     }
@@ -39,12 +39,13 @@ public class AmmoCrafterScreen extends AbstractContainerScreen<AmmoCrafterMenu> 
         int top = this.topPos;
 
         guiGraphics.fill(left, top, left + this.imageWidth, top + this.imageHeight, BACKGROUND_COLOR);
-        guiGraphics.fill(left + 7, top + 17, left + 169, top + 187, PANEL_COLOR);
+        guiGraphics.fill(left + 7, top + 17, left + 187, top + 187, PANEL_COLOR);
 
-        drawSlotGrid(guiGraphics, left + 25, top + 17, 3, 3);
-        drawSlotGrid(guiGraphics, left + 115, top + 17, 3, 3);
-        drawSlotGrid(guiGraphics, left + 7, top + 101, 9, 3);
-        drawSlotGrid(guiGraphics, left + 7, top + 159, 9, 1);
+        drawSlotGrid(guiGraphics, left + 87, top + 35, 1, 1);
+        drawSlotGrid(guiGraphics, left + 16, top + 17, 3, 3);
+        drawSlotGrid(guiGraphics, left + 122, top + 17, 3, 3);
+        drawSlotGrid(guiGraphics, left + 16, top + 101, 9, 3);
+        drawSlotGrid(guiGraphics, left + 16, top + 159, 9, 1);
     }
 
     private static void drawSlotGrid(GuiGraphics guiGraphics, int x, int y, int columns, int rows) {
