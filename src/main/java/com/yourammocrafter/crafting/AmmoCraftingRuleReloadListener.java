@@ -5,7 +5,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.mojang.logging.LogUtils;
 import com.mojang.serialization.JsonOps;
 import com.yourammocrafter.YourAmmoCrafterMod;
 import net.minecraft.resources.ResourceLocation;
@@ -15,7 +14,6 @@ import net.minecraft.util.GsonHelper;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
-import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 
 public class AmmoCraftingRuleReloadListener extends SimpleJsonResourceReloadListener {
-    private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new Gson();
     private static final String DIRECTORY = "ammo_crafting";
 
@@ -47,17 +44,12 @@ public class AmmoCraftingRuleReloadListener extends SimpleJsonResourceReloadList
 
             try {
                 AmmoCraftingRule rule = parseRule(entry.getValue());
-                AmmoCraftingRule previous = loadedRules.put(rule.ammoId(), rule);
-                if (previous != null) {
-                    LOGGER.warn("Duplicate ammo crafting rule for ammo id {}; {} overrides an earlier rule", rule.ammoId(), fileId);
-                }
-            } catch (RuntimeException exception) {
-                LOGGER.error("Failed to parse ammo crafting rule {}", fileId, exception);
+                loadedRules.put(rule.ammoId(), rule);
+            } catch (RuntimeException ignored) {
             }
         }
 
         AmmoCraftingRules.replaceAll(loadedRules);
-        LOGGER.info("Loaded {} ammo crafting rules: {}", loadedRules.size(), AmmoCraftingRules.ammoIds());
     }
 
     private static AmmoCraftingRule parseRule(JsonElement element) {
