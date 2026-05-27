@@ -1,9 +1,13 @@
 package com.yourammocrafter.blockentity;
 
+import com.yourammocrafter.crafting.AmmoCraftingRule;
+import com.yourammocrafter.crafting.AmmoCraftingRules;
+import com.yourammocrafter.crafting.CountedIngredient;
 import com.yourammocrafter.menu.AmmoCrafterMenu;
 import com.yourammocrafter.registry.ModBlockEntities;
 import com.yourammocrafter.tacz.AmmoTemplateData;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -13,8 +17,11 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,11 +31,13 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
     public static final int INPUT_SLOT_COUNT = 9;
     public static final int OUTPUT_SLOT_COUNT = 9;
 
+    private static final int CRAFT_INTERVAL_TICKS = 10;
     private static final Component TITLE = Component.translatable("container.yourammocrafter.ammo_crafter");
     private static final String INPUT_ITEMS_TAG = "InputItems";
     private static final String OUTPUT_ITEMS_TAG = "OutputItems";
 
     private Optional<AmmoTemplateData> ammoTemplate = Optional.empty();
+    private int craftCooldown;
 
     private final ItemStackHandler inputItems = new ItemStackHandler(INPUT_SLOT_COUNT) {
         @Override
@@ -43,9 +52,88 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
             AmmoCrafterBlockEntity.this.setChanged();
         }
     };
+    private final IItemHandler inputAutomationHandler = new IItemHandler() {
+        @Override
+        public int getSlots() {
+            return AmmoCrafterBlockEntity.this.inputItems.getSlots();
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return AmmoCrafterBlockEntity.this.inputItems.getStackInSlot(slot);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return AmmoCrafterBlockEntity.this.inputItems.insertItem(slot, stack, simulate);
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return AmmoCrafterBlockEntity.this.inputItems.getSlotLimit(slot);
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return AmmoCrafterBlockEntity.this.inputItems.isItemValid(slot, stack);
+        }
+    };
+    private final IItemHandler outputAutomationHandler = new IItemHandler() {
+        @Override
+        public int getSlots() {
+            return AmmoCrafterBlockEntity.this.outputItems.getSlots();
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return AmmoCrafterBlockEntity.this.outputItems.getStackInSlot(slot);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return stack;
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return AmmoCrafterBlockEntity.this.outputItems.extractItem(slot, amount, simulate);
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return AmmoCrafterBlockEntity.this.outputItems.getSlotLimit(slot);
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return false;
+        }
+    };
 
     public AmmoCrafterBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntities.AMMO_CRAFTER.get(), pos, blockState);
+    }
+
+    public static void serverTick(Level level, BlockPos pos, BlockState state, AmmoCrafterBlockEntity blockEntity) {
+        if (level.isClientSide) {
+            return;
+        }
+
+        if (!level.hasNeighborSignal(pos)) {
+            blockEntity.craftCooldown = 0;
+            return;
+        }
+
+        blockEntity.craftCooldown++;
+        if (blockEntity.craftCooldown >= CRAFT_INTERVAL_TICKS) {
+            blockEntity.craftCooldown = 0;
+            blockEntity.tryCraftOnce();
+        }
     }
 
     public Optional<AmmoTemplateData> getAmmoTemplate() {
@@ -68,6 +156,14 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
 
     public ItemStackHandler getOutputItems() {
         return this.outputItems;
+    }
+
+    @Nullable
+    public IItemHandler getAutomationItemHandler(@Nullable Direction side) {
+        if (side == null) {
+            return null;
+        }
+        return side == Direction.DOWN ? this.outputAutomationHandler : this.inputAutomationHandler;
     }
 
     @Override
@@ -110,6 +206,83 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
         );
         tag.put(INPUT_ITEMS_TAG, this.inputItems.serializeNBT(provider));
         tag.put(OUTPUT_ITEMS_TAG, this.outputItems.serializeNBT(provider));
+    }
+
+    private boolean tryCraftOnce() {
+        AmmoTemplateData template = this.ammoTemplate.orElse(null);
+        if (template == null) {
+            return false;
+        }
+
+        AmmoCraftingRule rule = AmmoCraftingRules.find(template.ammoId()).orElse(null);
+        if (rule == null) {
+            return false;
+        }
+
+        ItemStack output = template.createStack(rule.outputCount());
+        if (output.isEmpty()) {
+            return false;
+        }
+
+        if (!hasIngredients(rule) || !canInsertAllOutput(output)) {
+            return false;
+        }
+
+        consumeIngredients(rule);
+        insertOutput(output);
+        this.setChanged();
+        return true;
+    }
+
+    private boolean hasIngredients(AmmoCraftingRule rule) {
+        for (CountedIngredient ingredient : rule.ingredients()) {
+            int found = 0;
+            for (int slot = 0; slot < this.inputItems.getSlots(); slot++) {
+                ItemStack stack = this.inputItems.getStackInSlot(slot);
+                if (ingredient.ingredient().test(stack)) {
+                    found += stack.getCount();
+                    if (found >= ingredient.count()) {
+                        break;
+                    }
+                }
+            }
+            if (found < ingredient.count()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void consumeIngredients(AmmoCraftingRule rule) {
+        for (CountedIngredient ingredient : rule.ingredients()) {
+            int remaining = ingredient.count();
+            for (int slot = 0; slot < this.inputItems.getSlots() && remaining > 0; slot++) {
+                ItemStack stack = this.inputItems.getStackInSlot(slot);
+                if (ingredient.ingredient().test(stack)) {
+                    int toExtract = Math.min(remaining, stack.getCount());
+                    ItemStack extracted = this.inputItems.extractItem(slot, toExtract, false);
+                    remaining -= extracted.getCount();
+                }
+            }
+        }
+    }
+
+    private boolean canInsertAllOutput(ItemStack output) {
+        ItemStack remaining = output.copy();
+        for (int slot = 0; slot < this.outputItems.getSlots(); slot++) {
+            remaining = this.outputItems.insertItem(slot, remaining, true);
+            if (remaining.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void insertOutput(ItemStack output) {
+        ItemStack remaining = output.copy();
+        for (int slot = 0; slot < this.outputItems.getSlots() && !remaining.isEmpty(); slot++) {
+            remaining = this.outputItems.insertItem(slot, remaining, false);
+        }
     }
 
     private static CompoundTag emptyInventoryTag(int size) {
