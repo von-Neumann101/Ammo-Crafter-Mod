@@ -1,0 +1,24 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
+
+[[mods]]
+modId = "yourammocrafter"
+version = "0.1.0"
+displayName = "Your Ammo Crafter Mod"
+authors = "YourAmmoCrafterMod contributors"
+description = '''Minimal ammo template data utilities for TaCZ ammo stacks.'''
+
+[[dependencies.yourammocrafter]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.93,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.yourammocrafter]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1]"
+ordering = "NONE"
+side = "BOTH"

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "yourammocrafter:block/ammo_crafter"
+    }
+  }
+}
