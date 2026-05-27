@@ -1,0 +1,14 @@
+{
+  "ammo_id": "tacz:762x39",
+  "output_count": 64,
+  "ingredients": [
+    {
+      "item": "minecraft:iron_ingot",
+      "count": 1
+    },
+    {
+      "item": "minecraft:gunpowder",
+      "count": 1
+    }
+  ]
+}
