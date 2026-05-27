@@ -14,6 +14,7 @@ public final class ModBlocks {
             "ammo_crafter",
             () -> new AmmoCrafterBlock(BlockBehaviour.Properties.of()
                     .strength(3.5F)
+                    .requiresCorrectToolForDrops()
                     .sound(SoundType.METAL))
     );
 

@@ -167,7 +167,7 @@ public class AmmoCrafterBlockEntity extends BlockEntity implements MenuProvider 
     @Nullable
     public IItemHandler getAutomationItemHandler(@Nullable Direction side) {
         if (side == null) {
-            return null;
+            return this.inputAutomationHandler;
         }
         return side == Direction.DOWN ? this.outputAutomationHandler : this.inputAutomationHandler;
     }
